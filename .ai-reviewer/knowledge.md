@@ -1,31 +1,27 @@
 # Demand reviewer notes
 
 ## Architecture
-
-Demand is a dependency-free Node.js URL shortener using the built-in `http`, filesystem, and crypto APIs. `src/server.js` composes static, API, and redirect handlers; services contain persistence and shortening behavior, while utilities provide validation, HTTP helpers, logging, and code generation. The browser client lives in `public/`, and links are persisted in `data/links.json`.
+Demand is a zero-dependency CommonJS Node.js URL shortener, exposed through both an HTTP server and a CLI. `src/server.js` composes ordered route handlers for static files, APIs, and redirects; domain logic lives in `src/services/shortener.js` and persistence in `src/services/store.js`. Data is stored as JSON files under `data/`, with browser code in `public/`.
 
 ## Conventions
-
-- Keep runtime code dependency-free and use Node.js built-ins; `package.json` has no dependencies and starts `src/server.js` directly.
-- Route handlers use a composable middleware style: return `false` when a route does not match and `true`/a response otherwise (`src/routes/api.js`, `src/routes/redirect.js`, `src/routes/static.js`).
-- Business logic belongs in services rather than route modules. `Shortener` owns URL validation, code generation, hit counting, and response-shaped records (`src/services/shortener.js`); `Store` owns JSON persistence (`src/services/store.js`).
-- Configuration is centralized in `src/config.js`, with environment overrides for `PORT`, `HOST`, and `DATA_FILE`; use `config.codeLength` rather than duplicating the six-character default.
-- API errors are JSON objects with an `error` field and appropriate status codes, using `sendJson` (`src/routes/api.js`, `src/server.js`). Malformed JSON and bodies over 100 KB are rejected by `readBody` (`src/utils/http.js`).
-- Short codes are generated with `generateCode()` and must be collision-checked through `store.has()` before saving (`src/services/shortener.js`). Validation accepts alphanumeric codes of 4–12 characters (`src/utils/validate.js`).
-- Tests use the built-in `node:test` runner and isolate persistence with a temporary store (`tests/shortener.test.js`). `Store` accepts an explicit file path for this purpose.
-- Use CommonJS modules and semicolon-terminated JavaScript, matching all files under `src/`, `public/`, and `tests/`.
+- Keep the project dependency-free and use Node built-ins (`http`, `fs`, `crypto`, `path`); this is explicit in `README.md` and `package.json`.
+- Use CommonJS modules and export factories/classes/functions with `module.exports`, as shown by `src/services/store.js`, `src/routes/api.js`, and `src/utils/codegen.js`.
+- Route handlers use the middleware-like boolean contract: return `false` when they do not own a request, otherwise send the response and return `true` (`src/routes/api.js`, `src/routes/redirect.js`). Preserve handler ordering in `src/server.js`.
+- Keep business rules in `Shortener`, not in route code. URL validation and code generation are delegated to `src/utils/validate.js` and `src/utils/codegen.js`; `src/services/shortener.js` handles collision retries, timestamps, hit increments, and persistence.
+- Configuration comes from environment variables with defaults in `src/config.js` (`PORT`, `HOST`, and `DATA_FILE`); avoid hardcoding deployment-specific values.
+- Stored link records use `{ url, hits, createdAt }`, keyed by generated six-character codes. Public API responses add `shortUrl` only at the API boundary (`src/routes/api.js`).
+- File-backed mutations are synchronous and immediately persisted through `Store.save()` (`src/services/store.js`); follow this model unless persistence is deliberately redesigned.
+- CLI commands return numeric exit codes and convert thrown errors to stderr plus exit code `1` (`src/cli.js`).
 
 ## Intentional non-standard choices
-
-- `Store` performs synchronous file reads and writes (`src/services/store.js`); this is intentional for the tiny, single-process application, not an accidental omission of async I/O.
-- The route stack checks static files before API and redirect routes (`src/server.js`), and handlers communicate matching through boolean return values rather than a framework/router.
-- The short-code alphabet intentionally omits visually ambiguous characters (`0`, `1`, `l`, `o`, `O`, `I`) in `src/utils/codegen.js`.
-- Redirects use HTTP `302` rather than a permanent redirect (`src/routes/redirect.js`), and each successful resolution increments and persists `hits`.
+- Synchronous filesystem I/O is intentional for this tiny, dependency-free application (`src/services/store.js`, `src/services/analytics.js`).
+- Codes intentionally exclude visually ambiguous characters via the alphabet in `src/utils/codegen.js`.
+- The frontend uses DOM construction and `textContent` rather than templating (`public/app.js`), avoiding HTML injection when displaying stored URLs.
 
 ## Watch out for
-
-- Preserve URL safety checks: only `http:` and `https:` URLs up to 2048 characters are accepted (`src/utils/validate.js`); do not weaken this to arbitrary schemes.
-- Do not bypass collision detection or alter the configured code length without updating validation and tests (`src/services/shortener.js`, `src/config.js`).
-- Changes to route matching must preserve the `false`/handled contract, especially for unknown paths and `/api/stats/:code`.
-- Avoid exposing filesystem paths or raw exceptions in HTTP responses; the server logs details but returns `Internal server error` (`src/server.js`).
-- Be careful with static path handling: any change to `path.join` or the `startsWith(PUBLIC_DIR)` guard could introduce file disclosure (`src/routes/static.js`).
+- Preserve URL restrictions: only HTTP(S) URLs are accepted through `isValidUrl`; do not bypass validation in APIs, CLI, or admin operations.
+- Validate short codes before lookup or mutation. Existing routes use `isValidCode` for stats, redirects, and admin actions.
+- Treat imported admin data as untrusted: validate both codes and URLs and normalize hit counts as `src/routes/admin.js` does.
+- Do not weaken admin authentication or replace `timingSafeEqual`; admin routes require `Authorization: Bearer <ADMIN_TOKEN>`, and are disabled when the token is unset (`src/routes/admin.js`).
+- Review filesystem path changes for traversal and containment issues, especially static serving in `src/routes/static.js` and admin import/export in `src/routes/admin.js`.
+- `src/services/analytics.js` is separate from the hit counter used by `Shortener`; changes to redirect statistics must not assume analytics is automatically wired into `src/server.js`.
