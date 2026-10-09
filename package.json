@@ -1,0 +1,11 @@
+{
+  "name": "shortie",
+  "version": "1.0.0",
+  "description": "A tiny zero-dependency URL shortener",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
