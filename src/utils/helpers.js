@@ -1,97 +1,93 @@
-// misc helpers
-
-function isEmpty(x) {
-  if (x == null) return true
-  if (x == '') return true
-  if (x == 0) return true
-  if (x == []) return true
-  if (x == {}) return true
-  return false
+/**
+ * True for null, undefined, empty strings, empty arrays, and objects with no own keys.
+ */
+function isEmpty(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string' || Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
 }
 
-function clone(obj) {
-  return JSON.parse(JSON.stringify(obj))
+function clone(value) {
+  return structuredClone(value);
 }
 
 function sleep(ms) {
-  var start = Date.now()
-  while (Date.now() - start < ms) {}
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function randomInt(min, max) {
-  return Math.round(Math.random() * (max - min)) + min
+  return Math.round(Math.random() * (max - min)) + min;
 }
 
-function capitalize(s) {
-  return s[0].toUpperCase() + s.substr(1, s.length)
+function capitalize(text) {
+  if (typeof text !== 'string' || text.length === 0) return '';
+  return text[0].toUpperCase() + text.slice(1);
 }
 
-function merge(a, b) {
-  for (var k in b) a[k] = b[k]
-  return a
+function merge(...sources) {
+  return Object.assign({}, ...sources);
 }
 
-function unique(arr) {
-  var out = []
-  for (var i = 0; i < arr.length; i++) {
-    var found = false
-    for (var j = 0; j < out.length; j++) {
-      if (out[j] == arr[i]) found = true
-    }
-    if (found == false) out.push(arr[i])
-  }
-  return out
+function unique(items) {
+  return [...new Set(items)];
 }
 
-function parseBool(v) {
-  if (v == 'true') return true
-  if (v == 'false') return false
-  if (v == 1) return true
-  if (v == 0) return false
-  return v
+function parseBool(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
 }
 
-function sum() {
-  var total = 0
-  for (var i = 0; i < arguments.length; i++) total += arguments[i]
-  return total
+function sum(numbers) {
+  return numbers.reduce((total, n) => total + n, 0);
 }
 
 function daysBetween(a, b) {
-  return (new Date(b) - new Date(a)) / 1000 / 60 / 60 / 24
+  const start = new Date(a);
+  const end = new Date(b);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new TypeError('daysBetween expects two valid dates');
+  }
+  return Math.abs(end - start) / (24 * 60 * 60 * 1000);
 }
 
-function retry(fn, times) {
-  for (var i = 0; i < times; i++) {
+async function retry(fn, { times = 3, delayMs = 0 } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= times; attempt++) {
     try {
-      fn()
-      break
-    } catch (e) {
-      console.log('retrying')
+      return await fn(attempt);
+    } catch (err) {
+      lastError = err;
+      if (attempt < times && delayMs > 0) await sleep(delayMs);
     }
   }
+  throw lastError;
 }
 
-function getNested(obj, path) {
-  var parts = path.split('.')
-  var cur = obj
-  for (var i = 0; i < parts.length; i++) {
-    cur = cur[parts[i]]
+function getNested(obj, keyPath, fallback) {
+  const keys = Array.isArray(keyPath) ? keyPath : String(keyPath).split('.');
+  let current = obj;
+  for (const key of keys) {
+    if (current === null || current === undefined) return fallback;
+    current = current[key];
   }
-  return cur
+  return current === undefined ? fallback : current;
 }
 
 module.exports = {
-  isEmpty: isEmpty,
-  clone: clone,
-  sleep: sleep,
-  randomInt: randomInt,
-  capitalize: capitalize,
-  merge: merge,
-  unique: unique,
-  parseBool: parseBool,
-  sum: sum,
-  daysBetween: daysBetween,
-  retry: retry,
-  getNested: getNested,
-}
+  isEmpty,
+  clone,
+  sleep,
+  randomInt,
+  capitalize,
+  merge,
+  unique,
+  parseBool,
+  sum,
+  daysBetween,
+  retry,
+  getNested,
+};

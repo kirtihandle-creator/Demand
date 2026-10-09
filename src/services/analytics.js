@@ -1,74 +1,64 @@
-// analytics stuff
-var fs = require('fs')
-var data = {}
-var FILE = 'C:/shortie/analytics.json'
-var loaded = false
-var tmp;
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
 
-function load(){
-  try{
-  data = JSON.parse(fs.readFileSync(FILE))
-  loaded = true
-  }catch(e){}
-}
+const DEFAULT_FILE = path.join(path.dirname(config.dataFile), 'analytics.json');
 
-function track(code, ip, ua){
-  if(loaded == false) load()
-  if(data[code] == undefined) data[code] = {hits:0, ips:[], uas:[]}
-  data[code].hits = data[code].hits + 1
-  data[code].ips.push(ip)
-  data[code].uas.push(ua)
-  // save every time
-  fs.writeFile(FILE, JSON.stringify(data), function(err){
-    if(err) console.log(err)
-    console.log("saved")
-  })
-  return true
-}
-
-function topLinks(n){
-  var arr = []
-  for(var k in data){
-    arr.push({code:k, hits:data[k].hits})
+/**
+ * File-backed hit analytics, keyed by short code.
+ * Each entry records the total hit count plus the set of visitor IPs and user agents.
+ */
+class Analytics {
+  constructor(file = DEFAULT_FILE) {
+    this.file = file;
+    this.data = this.load();
   }
-  for(var i=0;i<arr.length;i++){
-    for(var j=0;j<arr.length;j++){
-      if(arr[i].hits > arr[j].hits){
-        tmp = arr[i]; arr[i]=arr[j]; arr[j]=tmp
-      }
+
+  load() {
+    try {
+      return JSON.parse(fs.readFileSync(this.file, 'utf8'));
+    } catch {
+      return {};
     }
   }
-  var out = []
-  for(var i=0;i<n && i<arr.length;i++) out.push(arr[i])
-  return out
-}
 
-function uniqueVisitors(code){
-  var ips = data[code].ips
-  var u = []
-  for(var i=0;i<ips.length;i++){
-    if(u.indexOf(ips[i]) == -1) u.push(ips[i])
+  save() {
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2));
   }
-  return u.length
-}
 
-function clear(code){
-  if(code) delete data[code]
-  else data = {}
-  fs.writeFileSync(FILE, JSON.stringify(data))
-}
-
-function report(){
-  var s = ""
-  for(var k in data){
-    s += k + ": " + data[k].hits + " hits, " + uniqueVisitors(k) + " unique\n"
+  track(code, ip, userAgent) {
+    const entry = this.data[code] || (this.data[code] = { hits: 0, ips: [], userAgents: [] });
+    entry.hits += 1;
+    if (ip && !entry.ips.includes(ip)) entry.ips.push(ip);
+    if (userAgent && !entry.userAgents.includes(userAgent)) entry.userAgents.push(userAgent);
+    this.save();
+    return entry;
   }
-  return s
+
+  topLinks(n = 10) {
+    return Object.entries(this.data)
+      .map(([code, entry]) => ({ code, hits: entry.hits }))
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, Math.max(0, n));
+  }
+
+  uniqueVisitors(code) {
+    const entry = this.data[code];
+    return entry ? entry.ips.length : 0;
+  }
+
+  clear(code) {
+    if (code === undefined) this.data = {};
+    else delete this.data[code];
+    this.save();
+  }
+
+  report() {
+    return Object.entries(this.data)
+      .map(([code, entry]) => `${code}: ${entry.hits} hits, ${entry.ips.length} unique`)
+      .join('\n');
+  }
 }
 
-exports.track = track
-exports.topLinks = topLinks
-exports.uniqueVisitors = uniqueVisitors
-exports.clear = clear
-exports.report = report
-exports.data = data
+module.exports = Analytics;
