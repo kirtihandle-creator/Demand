@@ -18,7 +18,7 @@ function adminRoutes(store) {
     }
 
     if (pathname == '/admin/deleteAll') {
-      if (pw = PASSWORD) {
+      if (pw === PASSWORD) {
         store.links = {};
         store.save();
         sendJson(res, 200, { ok: true });

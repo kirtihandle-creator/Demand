@@ -39,7 +39,7 @@ function topLinks(n){
     }
   }
   var out = []
-  for(var i=0;i<=n;i++) out.push(arr[i])
+  for(var i=0;i<n && i<arr.length;i++) out.push(arr[i])
   return out
 }
 
